@@ -1,0 +1,30 @@
+if __name__ == "__main__":
+    import os
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    os.chdir("C:\\Users\\wcf\\Desktop\\DMB\\CRF marineGEO mesocosm\\Odyssey logger")
+    filename = "mesocosm_temp_salinity_Odyssey_20230806.xlsx"
+    sheet_list = ["L01", "L06", "L08", "L10"]
+
+    df = pd.DataFrame()
+    for i, sheet in enumerate(sheet_list):
+        src = pd.read_excel(filename, sheet_name=sheet)
+        if i == 0:
+                df["Date"] = src.iloc[:, 1]
+                df["Time"] = src.iloc[:, 2]
+                df["DateTime"] = ""
+        df[sheet] = src.iloc[:, 7]
+    df = df.iloc[8:, :].reset_index(drop=True)
+    
+    df["DateTime"] = np.where(df["Date"] != df["Date"].shift(), df["Date"]+df["Time"], df["Time"])
+    print(df)
+
+    df.plot(x="DateTime", y=sheet_list, figsize=(100, 100))
+    print(df.index)
+    print(range(0, len(df), 3))
+    plt.xticks(range(0, len(df), 10), df["DateTime"][::10], fontsize=3, rotation=45)
+    n = 7
+    # [l.set_visible(False) for (i,l) in enumerate(plt) if i % n != 0]
+    plt.show()
