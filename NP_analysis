@@ -1,0 +1,109 @@
+#' @title data analysis for nutrient data from EPD (https://cd.epic.epd.gov.hk/EPICRIVER/marine/?lang=en)
+#' @export
+  
+# function to specific which statistics functions to use 
+stat_func <- function(x) {
+  x = as.numeric(x)
+  c(min = min(x, na.rm = TRUE), median = median(x, na.rm = TRUE), mean = mean(x, na.rm = TRUE), max = max(x, na.rm = TRUE))
+  # summary(x)
+}
+
+# Method 1: with reshape2::melt and base::aggregate to summarize the data frame
+NP_summarize <- function(df) {
+  df_melted <- reshape2::melt(df, id.vars = "Water Control Zone")
+  df_melted_aggregated <- aggregate(value ~ `Water Control Zone` + variable, data = df_melted, FUN = summary)
+  write.csv(df_melted_aggregated, file = "NP_groupedByWCZ_stat.csv", row.names=FALSE)
+  
+  p <- ggplot2::ggplot(df_melted, ggplot2::aes(factor(`Water Control Zone`), value)) + ggplot2::geom_boxplot() + ggplot2::labs(title = "Marine water qaulity in HK", x = "Water Control Zone", y = "Concentration (mg/L)") + ggplot2::scale_y_continuous(breaks = scales::extended_breaks(20), limits = c(0, NA)) + ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust=1), strip.text.x = ggplot2::element_text(size=8)) + ggh4x::facet_grid2(. ~ `variable`, scales = "free", independent = "y")
+  
+  # + ggplot2::facet_grid(. ~ `variable`, scales = "free")
+
+  ggplot2::ggsave("NP_boxplot.pdf", plot = p, scale=3)
+  ggplot2::ggsave("NP_boxplot.svg", plot = p, scale=3)
+}
+
+# Method 2: with for loop and iterate over each column; output shape is different with Method 1
+NP_summarize2 <- function(df) {
+  df2 <- data.frame()
+  for (i in unique(df$`Water Control Zone`)) {
+    res <- df[df$`Water Control Zone` == i, ]
+    
+    res_melted <- reshape2::melt(res, id.vars = "Water Control Zone")
+    # boxplot(data=res_melted, value~variable)
+    p <- ggplot2::ggplot(res_melted, ggplot2::aes(factor(variable), value)) + ggplot2::geom_boxplot()
+    
+    res_stat <- as.data.frame(`Water Control Zone`=i, sapply(res, stat_func))
+    res_stat$stat <- rownames(res_stat)
+    res_stat$`Water Control Zone` <- i
+    rownames(res_stat) <- NULL
+    
+    df2 <- rbind(df2, res_stat)
+  }
+  write.csv(df2, file = "NP_groupedByWCZ_stat2.csv", row.names = FALSE)
+}
+
+
+#========================================================================================================================================
+if (sys.nframe() == 0) {
+  setwd(file.path(paste0("C:/Users/", Sys.info()[["user"]], "/Desktop/DMB/Reference - EPD data/Marine water qaulity in HK")))
+  file <- "NP_CONCATENATED.xlsx"
+
+  # load excel, convert data to numeric
+  df <- readxl::read_excel(file)
+  df_data <- df[, c(6:12)] # columns "Ammonia Nitrogen (mg/L)" to "Total Phosphorus (mg/L)"
+  df_data <-  dplyr::mutate_all(df_data, function(x) {gsub("<", "", x)})
+  df_data <- dplyr::mutate_all(df_data, function(x) {as.numeric(as.character(x))})
+  df <- cbind(df[, 1:5], df_data)
+  
+  western_sites <- c("Deep Bay", "North Western", "Western Buffer")
+  df_western <- stat_func(df[df$`Water Control Zone` %in% western_sites, "Total Inorganic Nitrogen (mg/L)"])
+  
+  NP_summarize(df)
+  NP_summarize2(df)
+  
+  {
+    # Analysis for Haoya on 20230908
+    library(dplyr)
+    PARAMETER_COLUMN_NAME <- c("Ammonia Nitrogen (mg/L)", "Nitrate Nitrogen (mg/L)", "Nitrite Nitrogen (mg/L)", "Orthophosphate Phosphorus (mg/L)", "Total Nitrogen (mg/L)", "Total Inorganic Nitrogen (mg/L)", "Total Phosphorus (mg/L)")
+    df_long <- tidyr::pivot_longer(df, cols = all_of(PARAMETER_COLUMN_NAME), names_to = "Parameter")
+    df_long <- df_long[!is.na(df_long$value), ]
+    
+    stat.test <- df_long %>%
+      group_by(`Water Control Zone`, `Station`, `Depth`, `Parameter`) %>% 
+      summarise(min = min(value), median = median(value), mean = mean(value), max = max(value), sd = sd(value))
+    stat.test_2 <- df_long %>%
+      group_by(`Water Control Zone`, `Station`, `Parameter`) %>% 
+      summarise(min = min(value), median = median(value), mean = mean(value), max = max(value), sd = sd(value))
+    stat.test[stat.test$`Water Control Zone`=="Port Shelter" & stat.test$Station == "PM11", ]
+    stat.test_2$Depth <- "All"
+    stat.test_all <- rbind(stat.test, stat.test_2)
+    write.csv(stat.test_all, "NP_groupedByStation_stat.csv", row.names = FALSE)
+    
+    df_long_extract <- df_long[df_long$Station == "PM11", ]
+    Parameter_plot <- ggplot2::ggplot(data = df_long_extract, ggplot2::aes(x = Station, y = value)) + 
+      ggplot2::geom_jitter(alpha = 0.3) + 
+      ggplot2::theme(axis.text.x = ggplot2::element_text(vjust=1, hjust=1, angle = 45)) + 
+      # https://hausetutorials.netlify.app/0003_ggplot_modelfitting.html
+      ggplot2::stat_summary(fun.data = ggpubr::mean_sd, geom = "crossbar") + 
+      # ggpubr::stat_pvalue_manual(stat.test_extract, label = "p.adj.signif", hide.ns = TRUE) +
+      
+      # ggplot2::facet_grid(Depth~Parameter, scales = "free")
+      ggh4x::facet_grid2(Depth~Parameter, independent = "y", scales = "free_y")
+    Parameter_plot
+  }
+  
+  library(data.table)
+  dt <- setDT(df)
+  
+}
+
+# Obsolete codes
+# library(dplyr)
+# agg_tbl <- df %>% group_by(`Water Control Zone`) %>% summarise(mm = mean(`Ammonia Nitrogen (mg/L)`, na.rm=TRUE)) #summary() not supported
+
+# library(data.table)
+# dt <- setDT(df)
+# dt[, as.list(mean(dt, na.rm = TRUE)), by = `Water Control Zone`]
+
+# tapply(df$`Ammonia Nitrogen (mg/L)`, df$`Water Control Zone`, summary, na.rm=TRUE)
+
