@@ -1,0 +1,21 @@
+setwd("C:/Users/wcf/Desktop/DMB/EPD Data/Marine water qaulity in HK ref/")
+
+df <- data.frame()
+
+type <- "TSS"
+file_pattern <- paste0("^.*_", type, ".csv$")
+for (i in list.files(pattern = file_pattern)) {
+  reading <- read.csv(i, na.strings = "N/A")
+  df <- rbind(df, reading)
+}
+
+write.csv(df, file = paste0(type, "_CONCATENATED.csv"), row.names = FALSE)
+
+dim(df)
+
+summary(df)
+
+max(as.numeric(df$Total.Nitrogen..mg.L.), na.rm = TRUE)
+max(as.numeric(df$Total.Phosphorus..mg.L.), na.rm = TRUE)
+
+max(as.numeric(df$Suspended.Solids..mg.L.), na.rm = TRUE)
